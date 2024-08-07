@@ -34,12 +34,61 @@ from typing import List
 from aqt.webview import AnkiWebView
 
 def highlight_terms(webview: AnkiWebView, terms: List[str]):
-    # FIXME: anki21 does not seem to support highlighting more than one
-    # term at once. Likely a Qt bug / regression.
-    # TODO: Perhaps choose to highlight the longest term on anki21.
-    # TODO: Find a way to exclude UI text in editor pane from highlighting
-    for term in terms:
-        webview.findText(term)
+    # JavaScript to highlight terms using a transparent overlay
+    script = """
+			function removeHighlights() {
+					var highlights = document.querySelectorAll('.highlight-overlay');
+					highlights.forEach(function(highlight) {
+							highlight.parentNode.removeChild(highlight);
+					});
+			}
+
+			function highlightTerm(term) {
+					var textNodes = [];
+					function getTextNodes(node) {
+							if (node.nodeType === Node.TEXT_NODE) {
+									textNodes.push(node);
+							} else {
+									for (var i = 0; i < node.childNodes.length; i++) {
+											getTextNodes(node.childNodes[i]);
+									}
+							}
+					}
+					getTextNodes(document.body);
+
+					textNodes.forEach(function(node) {
+							var startIndex = 0;
+							var index;
+							while ((index = node.nodeValue.toLowerCase().indexOf(term.toLowerCase(), startIndex)) > -1) {
+									var range = document.createRange();
+									range.setStart(node, index);
+									range.setEnd(node, index + term.length);
+									var rect = range.getBoundingClientRect();
+
+									var highlight = document.createElement('div');
+									highlight.className = 'highlight-overlay';
+									highlight.style.position = 'absolute';
+									highlight.style.left = rect.left + 'px';
+									highlight.style.top = rect.top + 'px';
+									highlight.style.width = rect.width + 'px';
+									highlight.style.height = rect.height + 'px';
+									highlight.style.backgroundColor = 'rgba(255, 255, 0, 0.5)';
+									highlight.style.pointerEvents = 'none';
+									highlight.style.zIndex = '9999';
+									document.body.appendChild(highlight);
+
+									startIndex = index + term.length;
+							}
+					});
+			}
+
+			removeHighlights();
+			%s
+    """
+    terms_script = "\n".join([f"highlightTerm('{term}');" for term in terms])
+    webview.page().runJavaScript(script % terms_script)
+
 
 def clear_highlights(webview: AnkiWebView):
-    webview.findText("")
+    # webview.findText("")
+    webview.page().runJavaScript("removeHighlights();")
