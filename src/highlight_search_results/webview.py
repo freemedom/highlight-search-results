@@ -33,7 +33,10 @@ from typing import List
 
 from aqt.webview import AnkiWebView
 
-def highlight_terms(webview: AnkiWebView, terms: List[str]):
+import itertools
+
+
+def highlight_terms(webview: AnkiWebView, terms: List[str], scroll_to_first: bool = True):
     # JavaScript to highlight terms using a transparent overlay
     script = """
 			function removeHighlights() {
@@ -43,8 +46,9 @@ def highlight_terms(webview: AnkiWebView, terms: List[str]):
 					});
 			}
 
-			function highlightTerm(term) {
+			function highlightTerm(term, color, scrollToFirst) {
 					var textNodes = [];
+					var firstHighlight = null;
 					function getTextNodes(node) {
 							if (node.nodeType === Node.TEXT_NODE) {
 									textNodes.push(node);
@@ -69,26 +73,37 @@ def highlight_terms(webview: AnkiWebView, terms: List[str]):
 									highlight.className = 'highlight-overlay';
 									highlight.style.position = 'absolute';
 									highlight.style.left = rect.left + 'px';
-									highlight.style.top = rect.top + 'px';
+									highlight.style.top = rect.top + window.scrollY + 'px';
 									highlight.style.width = rect.width + 'px';
 									highlight.style.height = rect.height + 'px';
-									highlight.style.backgroundColor = 'rgba(255, 255, 0, 0.5)';
+									highlight.style.backgroundColor = color;
 									highlight.style.pointerEvents = 'none';
 									highlight.style.zIndex = '9999';
 									document.body.appendChild(highlight);
 
+									if (scrollToFirst && !firstHighlight) {
+										firstHighlight = highlight;
+									}
+
 									startIndex = index + term.length;
 							}
 					});
+
+					if (firstHighlight) {
+						firstHighlight.scrollIntoView({behavior: 'smooth', block: 'center'});
+					}
 			}
 
 			removeHighlights();
 			%s
     """
-    terms_script = "\n".join([f"highlightTerm('{term}');" for term in terms])
+    colors = ['rgba(255, 255, 0, 0.5)', "rgba(255, 0, 0, 0.5)", "rgba(0, 255, 0, 0.5)", "rgba(0, 0, 255, 0.5)", 'rgba(0, 255, 255, 0.5)', 'rgba(255, 0, 255, 0.5)']
+    color_cycle = itertools.cycle(colors)
+    
+    terms_script = "\n".join([f"highlightTerm('{term}', '{next(color_cycle)}', {str(scroll_to_first).lower()});" for term in terms])
     webview.page().runJavaScript(script % terms_script)
 
-
 def clear_highlights(webview: AnkiWebView):
-    # webview.findText("")
+    # webview.findText("good")
+    # from aqt.qt import debug; debug()
     webview.page().runJavaScript("removeHighlights();")
